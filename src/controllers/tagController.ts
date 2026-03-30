@@ -1,115 +1,103 @@
-import { Response } from "express";
-import pool from "../config/db";
+﻿import { Response } from "express";
+import mongoose from "mongoose";
+import Tag from "../models/Tag";
+import Bookmark from "../models/Bookmark";
 import { createTagSchema, sanitizeString } from "../utils/validation";
 import { AuthRequest } from "../types";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
 
-// Get user's tags
+// GET /api/tags
 export const getAllTags = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
-    const [rows] = await pool.query<RowDataPacket[]>(
-      `SELECT t.*, COUNT(bt.bookmark_id) as usage_count
-       FROM tags t
-       LEFT JOIN bookmark_tags bt ON t.id = bt.tag_id
-       WHERE t.user_id = ?
-       GROUP BY t.id
-       ORDER BY usage_count DESC, t.name`,
-      [req.user.userId]
-    );
+    const tags = await Tag.find({ user_id: req.user.userId }).lean();
 
-    res.json({
-      success: true,
-      data: rows,
-    });
+    // Count usage per tag
+    const tagIds = tags.map((t) => t._id);
+    const usageCounts = await Bookmark.aggregate([
+      { $match: { user_id: new mongoose.Types.ObjectId(req.user.userId), tags: { $in: tagIds } } },
+      { $unwind: "$tags" },
+      { $group: { _id: "$tags", count: { $sum: 1 } } },
+    ]);
+
+    const countMap: Record<string, number> = {};
+    for (const u of usageCounts) countMap[u._id.toString()] = u.count;
+
+    const result = tags
+      .map((t) => ({
+        id: t._id.toString(),
+        user_id: t.user_id.toString(),
+        name: t.name,
+        createdAt: t.createdAt,
+        usage_count: countMap[t._id.toString()] ?? 0,
+      }))
+      .sort((a, b) => b.usage_count - a.usage_count);
+
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error("Get tags error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch tags",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch tags" });
   }
 };
 
-// Create tag
+// POST /api/tags
 export const createTag = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
     const validatedData = createTagSchema.parse(req.body);
     const tagName = sanitizeString(validatedData.name);
 
-    const [result] = await pool.query<ResultSetHeader>(
-      "INSERT INTO tags (user_id, name) VALUES (?, ?)",
-      [req.user.userId, tagName]
-    );
-
-    const [rows] = await pool.query<RowDataPacket[]>(
-      "SELECT * FROM tags WHERE id = ?",
-      [result.insertId]
-    );
+    const tag = await Tag.create({ user_id: req.user.userId, name: tagName });
 
     res.status(201).json({
       success: true,
-      data: rows[0],
+      data: {
+        id: tag._id.toString(),
+        user_id: tag.user_id.toString(),
+        name: tag.name,
+        createdAt: tag.createdAt,
+      },
       message: "Tag created successfully",
     });
   } catch (error: any) {
-    if (error.code === "ER_DUP_ENTRY") {
-      return res.status(409).json({
-        success: false,
-        error: "Tag already exists",
-      });
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, error: "Tag already exists" });
     }
     console.error("Create tag error:", error);
     throw error;
   }
 };
 
-// Delete tag
+// DELETE /api/tags/:id
 export const deleteTag = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
     const { id } = req.params;
 
-    const [result] = await pool.query<ResultSetHeader>(
-      "DELETE FROM tags WHERE id = ? AND user_id = ?",
-      [id, req.user.userId]
-    );
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "Tag not found or access denied",
-      });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, error: "Tag not found" });
     }
 
-    res.json({
-      success: true,
-      message: "Tag deleted successfully",
-    });
+    const tag = await Tag.findOneAndDelete({ _id: id, user_id: req.user.userId });
+
+    if (!tag) {
+      return res.status(404).json({ success: false, error: "Tag not found or access denied" });
+    }
+
+    // Remove tag from all bookmarks
+    await Bookmark.updateMany({ user_id: req.user.userId }, { $pull: { tags: tag._id } });
+
+    res.json({ success: true, message: "Tag deleted successfully" });
   } catch (error) {
     console.error("Delete tag error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete tag",
-    });
+    res.status(500).json({ success: false, error: "Failed to delete tag" });
   }
 };

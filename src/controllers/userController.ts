@@ -1,259 +1,136 @@
-import { Response } from "express";
-import pool from "../config/db";
+﻿import { Response } from "express";
+import User from "../models/User";
+import Bookmark from "../models/Bookmark";
 import { AuthRequest, UpdateProfileDTO, ChangePasswordDTO } from "../types";
-import {
-  hashPassword,
-  comparePassword,
-  validatePasswordStrength,
-} from "../utils/password";
-import { RowDataPacket, ResultSetHeader } from "mysql2";
+import { hashPassword, comparePassword, validatePasswordStrength } from "../utils/password";
 
-// Get user profile
+// GET /api/users/profile
 export const getProfile = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
-    const [users] = await pool.query<RowDataPacket[]>(
-      `SELECT id, username, email, full_name, avatar_url, created_at, last_login,
-              (SELECT COUNT(*) FROM bookmarks WHERE user_id = users.id) as total_bookmarks,
-              (SELECT COUNT(*) FROM bookmarks WHERE user_id = users.id AND is_public = TRUE) as public_bookmarks
-       FROM users WHERE id = ?`,
-      [req.user.userId]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+    const user = await User.findById(req.user.userId).select("-password_hash").lean();
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
     }
+
+    const total_bookmarks = await Bookmark.countDocuments({ user_id: req.user.userId });
+    const public_bookmarks = await Bookmark.countDocuments({ user_id: req.user.userId, is_public: true });
 
     res.json({
       success: true,
-      data: users[0],
+      data: {
+        id: user._id.toString(),
+        username: user.username,
+        email: user.email,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        createdAt: user.createdAt,
+        last_login: user.last_login,
+        total_bookmarks,
+        public_bookmarks,
+      },
     });
   } catch (error) {
     console.error("Get profile error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch profile",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch profile" });
   }
 };
 
-// Update profile
+// PUT /api/users/profile
 export const updateProfile = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
     const { full_name, avatar_url }: UpdateProfileDTO = req.body;
 
-    const updates: string[] = [];
-    const params: any[] = [];
-
-    if (full_name !== undefined) {
-      updates.push("full_name = ?");
-      params.push(full_name);
+    if (full_name === undefined && avatar_url === undefined) {
+      return res.status(400).json({ success: false, error: "No fields to update" });
     }
 
-    if (avatar_url !== undefined) {
-      updates.push("avatar_url = ?");
-      params.push(avatar_url);
-    }
+    const updates: any = {};
+    if (full_name !== undefined) updates.full_name = full_name;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url;
 
-    if (updates.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: "No fields to update",
-      });
-    }
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      updates,
+      { new: true, select: "-password_hash" }
+    ).lean();
 
-    params.push(req.user.userId);
-
-    await pool.query(
-      `UPDATE users SET ${updates.join(", ")} WHERE id = ?`,
-      params
-    );
-
-    const [users] = await pool.query<RowDataPacket[]>(
-      "SELECT id, username, email, full_name, avatar_url, created_at FROM users WHERE id = ?",
-      [req.user.userId]
-    );
-
-    res.json({
-      success: true,
-      data: users[0],
-      message: "Profile updated successfully",
-    });
+    res.json({ success: true, data: user, message: "Profile updated successfully" });
   } catch (error) {
     console.error("Update profile error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to update profile",
-    });
+    res.status(500).json({ success: false, error: "Failed to update profile" });
   }
 };
 
-// Change password
+// PUT /api/users/change-password
 export const changePassword = async (req: AuthRequest, res: Response) => {
   try {
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
+      return res.status(401).json({ success: false, error: "Not authenticated" });
     }
 
     const { current_password, new_password }: ChangePasswordDTO = req.body;
 
-    // Validate new password
     const passwordValidation = validatePasswordStrength(new_password);
     if (!passwordValidation.valid) {
-      return res.status(400).json({
-        success: false,
-        error: passwordValidation.message,
-      });
+      return res.status(400).json({ success: false, error: passwordValidation.message });
     }
 
-    // Get current user
-    const [users] = await pool.query<RowDataPacket[]>(
-      "SELECT password_hash FROM users WHERE id = ?",
-      [req.user.userId]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
     }
 
-    // Verify current password
-    const isCurrentPasswordValid = await comparePassword(
-      current_password,
-      users[0].password_hash
-    );
-
-    if (!isCurrentPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Current password is incorrect",
-      });
+    const isCurrentValid = await comparePassword(current_password, user.password_hash);
+    if (!isCurrentValid) {
+      return res.status(401).json({ success: false, error: "Current password is incorrect" });
     }
 
-    // Hash new password
-    const new_password_hash = await hashPassword(new_password);
+    user.password_hash = await hashPassword(new_password);
+    await user.save();
 
-    // Update password
-    await pool.query("UPDATE users SET password_hash = ? WHERE id = ?", [
-      new_password_hash,
-      req.user.userId,
-    ]);
-
-    res.json({
-      success: true,
-      message: "Password changed successfully",
-    });
+    res.json({ success: true, message: "Password changed successfully" });
   } catch (error) {
     console.error("Change password error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to change password",
-    });
+    res.status(500).json({ success: false, error: "Failed to change password" });
   }
 };
 
-// Get public profile by username
+// GET /api/users/:username/public-profile
 export const getPublicProfile = async (req: AuthRequest, res: Response) => {
   try {
     const { username } = req.params;
 
-    const [users] = await pool.query<RowDataPacket[]>(
-      `SELECT id, username, full_name, avatar_url, created_at,
-              (SELECT COUNT(*) FROM bookmarks WHERE user_id = users.id AND is_public = TRUE) as public_bookmarks
-       FROM users WHERE username = ? AND is_active = TRUE`,
-      [username]
-    );
+    const user = await User.findOne({ username, is_active: true })
+      .select("_id username full_name avatar_url createdAt")
+      .lean();
 
-    if (users.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+    if (!user) {
+      return res.status(404).json({ success: false, error: "User not found" });
     }
+
+    const public_bookmarks = await Bookmark.countDocuments({ user_id: user._id, is_public: true });
 
     res.json({
       success: true,
-      data: users[0],
+      data: {
+        id: user._id.toString(),
+        username: user.username,
+        full_name: user.full_name,
+        avatar_url: user.avatar_url,
+        createdAt: user.createdAt,
+        public_bookmarks,
+      },
     });
   } catch (error) {
     console.error("Get public profile error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to fetch profile",
-    });
-  }
-};
-
-// Delete account
-export const deleteAccount = async (req: AuthRequest, res: Response) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
-    }
-
-    const { password } = req.body;
-
-    // Verify password before deletion
-    const [users] = await pool.query<RowDataPacket[]>(
-      "SELECT password_hash FROM users WHERE id = ?",
-      [req.user.userId]
-    );
-
-    if (users.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
-
-    const isPasswordValid = await comparePassword(
-      password,
-      users[0].password_hash
-    );
-
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Password is incorrect",
-      });
-    }
-
-    // Delete user (cascades to bookmarks, tags, etc.)
-    await pool.query("DELETE FROM users WHERE id = ?", [req.user.userId]);
-
-    res.json({
-      success: true,
-      message: "Account deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete account error:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to delete account",
-    });
+    res.status(500).json({ success: false, error: "Failed to fetch profile" });
   }
 };

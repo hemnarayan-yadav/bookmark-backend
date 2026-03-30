@@ -2,25 +2,25 @@ import { Request } from "express";
 
 // User Types
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   password_hash: string;
   full_name: string | null;
   avatar_url: string | null;
-  created_at: Date;
-  updated_at: Date;
+  createdAt: Date;
+  updatedAt: Date;
   last_login: Date | null;
   is_active: boolean;
 }
 
 export interface UserPublic {
-  id: number;
+  id: string;
   username: string;
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  created_at: Date;
+  createdAt: Date;
 }
 
 export interface RegisterDTO {
@@ -47,16 +47,16 @@ export interface ChangePasswordDTO {
 
 // Bookmark Types
 export interface Bookmark {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   title: string;
   url: string;
   description: string | null;
   favicon: string | null;
   folder: string;
   is_public: boolean;
-  created_at: Date;
-  updated_at: Date;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface BookmarkWithTags extends Bookmark {
@@ -65,10 +65,10 @@ export interface BookmarkWithTags extends Bookmark {
 }
 
 export interface Tag {
-  id: number;
-  user_id: number;
+  id: string;
+  user_id: string;
   name: string;
-  created_at: Date;
+  createdAt: Date;
   usage_count?: number;
 }
 
@@ -105,7 +105,7 @@ export interface ApiResponse<T> {
 
 // JWT Types
 export interface JWTPayload {
-  userId: number;
+  userId: string;
   username: string;
   email: string;
 }

@@ -3,7 +3,7 @@ import {
   register,
   login,
   logout,
-  getCurrentUser,
+  getMe,
 } from "../controllers/authController";
 import { authenticateToken } from "../middleware/auth";
 
@@ -12,6 +12,6 @@ const router = express.Router();
 router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", authenticateToken, logout);
-router.get("/me", authenticateToken, getCurrentUser);
+router.get("/me", authenticateToken, getMe);
 
 export default router;

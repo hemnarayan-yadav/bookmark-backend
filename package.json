@@ -4,10 +4,11 @@
   "description": "Smart Bookmark Manager Backend API",
   "main": "dist/server.ts",
   "scripts": {
-  "dev": "ts-node src/server.ts",
-  "build": "tsc",
-  "start": "node dist/server.js"
- },
+    "dev": "ts-node src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "seed": "ts-node src/seed.ts"
+  },
   "keywords": [
     "bookmarks",
     "api",
@@ -16,6 +17,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/mongoose": "^5.11.96",
     "axios": "^1.6.2",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.0.0-rc.12",
@@ -25,7 +27,7 @@
     "express": "^4.18.2",
     "express-validator": "^7.3.0",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.6.5",
+    "mongoose": "^8.23.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

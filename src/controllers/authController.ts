@@ -6,7 +6,7 @@ import {
   comparePassword,
   validatePasswordStrength,
 } from "../utils/password";
-import { generateTokenPair } from "../utils/jwt";
+import { generateTokenPair, verifyToken } from "../utils/jwt";
 
 // Register new user
 export const register = async (req: AuthRequest, res: Response) => {
@@ -110,6 +110,40 @@ export const getMe = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Get me error:", error);
     res.status(500).json({ success: false, error: "Failed to fetch user" });
+  }
+};
+
+// Refresh token
+export const refreshToken = async (req: AuthRequest, res: Response) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({ success: false, error: "Refresh token required" });
+    }
+
+    let payload;
+    try {
+      payload = verifyToken(refreshToken);
+    } catch {
+      return res.status(401).json({ success: false, error: "Invalid or expired refresh token" });
+    }
+
+    const user = await User.findById(payload.userId).select("-password_hash");
+    if (!user || !user.is_active) {
+      return res.status(401).json({ success: false, error: "User not found or inactive" });
+    }
+
+    const tokens = generateTokenPair({
+      userId: user._id.toString(),
+      username: user.username,
+      email: user.email,
+    });
+
+    res.json({ success: true, data: { tokens } });
+  } catch (error) {
+    console.error("Refresh token error:", error);
+    res.status(500).json({ success: false, error: "Token refresh failed" });
   }
 };
 

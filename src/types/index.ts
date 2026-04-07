@@ -101,6 +101,74 @@ export interface ApiResponse<T> {
   data?: T;
   message?: string;
   error?: string;
+  total?: number;
+}
+
+// Collection Types
+export interface Collection {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  color: string;
+  icon: string;
+  is_public: boolean;
+  share_token: string | null;
+  bookmark_count: number;
+  bookmarks: any[];
+  collaborators: CollectionCollaborator[];
+  view_count: number;
+  owner?: { id: string; username: string; full_name: string | null; avatar_url: string | null };
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CollectionCollaborator {
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  role: "viewer" | "editor";
+  added_at: Date;
+}
+
+export interface CreateCollectionDTO {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  is_public?: boolean;
+}
+
+export interface UpdateCollectionDTO {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  is_public?: boolean;
+}
+
+// Dashboard Stats Types
+export interface DashboardStats {
+  overview: {
+    total_bookmarks: number;
+    public_bookmarks: number;
+    private_bookmarks: number;
+    total_collections: number;
+    total_tags: number;
+    total_favorites: number;
+  };
+  folders: { name: string; count: number }[];
+  top_tags: { id: string; name: string; count: number }[];
+  top_domains: { domain: string; count: number }[];
+  bookmarks_by_month: { year: number; month: number; count: number }[];
+  recent_activity: ActivityItem[];
+}
+
+export interface ActivityItem {
+  id: string;
+  type: string;
+  metadata: Record<string, any>;
+  createdAt: Date;
 }
 
 // JWT Types

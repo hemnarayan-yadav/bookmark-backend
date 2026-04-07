@@ -2,6 +2,7 @@
 import mongoose from "mongoose";
 import Bookmark from "../models/Bookmark";
 import Tag from "../models/Tag";
+import Activity from "../models/Activity";
 import { fetchMetadata } from "../utils/metadataFetcher";
 import { sanitizeString } from "../utils/validation";
 import { AuthRequest } from "../types";
@@ -152,6 +153,12 @@ export const createBookmark = async (req: AuthRequest, res: Response) => {
 
     const populated = await Bookmark.findById(bookmark._id).populate("tags").lean();
 
+    await Activity.create({
+      user_id: req.user.userId,
+      type: "bookmark_created",
+      metadata: { bookmark_id: bookmark._id, title: bookmark.title, url: bookmark.url },
+    });
+
     res.status(201).json({
       success: true,
       data: formatBookmark(populated),
@@ -234,6 +241,12 @@ export const deleteBookmark = async (req: AuthRequest, res: Response) => {
     }
 
     await bookmark.deleteOne();
+
+    await Activity.create({
+      user_id: req.user.userId,
+      type: "bookmark_deleted",
+      metadata: { title: bookmark.title, url: bookmark.url },
+    });
 
     res.json({ success: true, message: "Bookmark deleted successfully" });
   } catch (error) {

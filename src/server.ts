@@ -9,6 +9,9 @@ import userRoutes from "./routes/userRoutes";
 import bookmarkRoutes from "./routes/bookmarkRoutes";
 import tagRoutes from "./routes/tagRoutes";
 import publicRoutes from "./routes/publicRoutes";
+import collectionRoutes from "./routes/collectionRoutes";
+import favoriteRoutes from "./routes/favoriteRoutes";
+import statsRoutes from "./routes/statsRoutes";
 
 dotenv.config();
 
@@ -28,7 +31,11 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.endsWith(".vercel.app")) {
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith(".vercel.app") ||
+        origin.startsWith("chrome-extension://")
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`CORS: origin ${origin} not allowed`));
@@ -66,6 +73,9 @@ app.use("/api/users", userRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
 app.use("/api/tags", tagRoutes);
 app.use("/api/public", publicRoutes);
+app.use("/api/collections", collectionRoutes);
+app.use("/api/favorites", favoriteRoutes);
+app.use("/api/stats", statsRoutes);
 
 // Global error handler
 app.use(errorHandler);

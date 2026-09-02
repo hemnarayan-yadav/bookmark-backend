@@ -36,9 +36,12 @@ obtain a new access token without requiring the user to log in again.
 
 ```text
 src/
-├── controllers/
-├── routes/
-├── models/
-├── middleware/
-├── services/
-└── ...
+├── config/          # Application and database configuration
+├── controllers/     # Request handling and business logic
+├── middleware/      # Authentication and request middleware
+├── models/          # MongoDB/Mongoose models
+├── routes/          # API routes
+├── types/           # TypeScript types
+├── utils/           # Shared utility functions
+├── seed.ts          # Database seed functionality
+└── server.ts        # Application entry point
